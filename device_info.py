@@ -6,11 +6,6 @@ _objects = {}           # classe WMI -> {identifiant en MAJUSCULES: objet WMI}
 _drivers = None         # identifiant en MAJUSCULES -> objet pilote
 _driver_error = None    # message si la lecture des pilotes a echouer
 
-def clear_cache():
-    global _drivers, _driver_error
-    _objects.clear()
-    _drivers = None
-    _driver_error = None
 
 # Petits outils de mise en forme
 def _text(value, unit=""):
@@ -39,27 +34,13 @@ def _date(wmi_date):
         return None
     return f"{text[6:8]}/{text[4:6]}/{text[:4]}"
 
-def _first(value):
-    """WMI renvoie parfois un tuple (ex. HardwareID) : on garde le premier element."""
-    if isinstance(value, (list, tuple)):
-        return value[0] if value else None
-    return value
-
-# Une fonction par type de peripherique : objet WMI -> {libelle: valeur}
-def _generic(obj):
-    """Details valables pour TOUS les peripheriques (objet Win32_PnPEntity)."""
-    return {
-        "Description": _text(safe_get(obj, "Description")),
-        "Identifiant materiel": _text(_first(safe_get(obj, "HardwareID"))),
-    }
-
 def _disk(obj):
     serial = safe_get(obj, "SerialNumber")
     return {
         "Taille": _text(_gb(safe_get(obj, "Size")), "Go"),
         "Interface": _text(safe_get(obj, "InterfaceType")),
         "Partitions": _text(safe_get(obj, "Partitions")),
-        "Numero de serie": _text(str(serial).strip() if serial else None),
+        "Numero de serie": _text(str(serial).strip(" .") if serial else None),
         "Firmware": _text(safe_get(obj, "FirmwareRevision")),
     }
 
@@ -130,38 +111,37 @@ def _fill_driver(device):
     provider = safe_get(obj, "DriverProviderName")
     version = safe_get(obj, "DriverVersion")
     device.driver = f"{provider or ''} {version or ''}".strip() or NA
-    device.details["Date du pilote"] = _text(_date(safe_get(obj, "DriverDate")))
+    date = _date(safe_get(obj, "DriverDate"))
+    if date and date != "21/06/2006":   # date générique des pilotes inclus dans Windows
+         device.details["Date du pilote"] = date
 
 # Fonction principale
-def get_details(device, with_driver=True):
-    """Remplit device.details (et device.driver) puis retourne le même Device.
-
-    with_driver=False évite la lecture des pilotes (plus rapide la première fois).
-    En cas de problème, l'erreur est écrite dans device.details au lieu de
-    faire planter le programme.
-    """
+def get_details(device):
+    # 1. Caractéristiques spécifiques à la catégorie (disque, réseau, affichage)
     try:
-        pnp = _find("Win32_PnPEntity", device.device_id)
-        if pnp is None:
-            device.details["Information"] = "Périphérique introuvable (débranché ou désactivé ?)"
-        else:
-            if device.category in SPECIFIC:
-                wmi_class, builder = SPECIFIC[device.category]
-                obj = _find(wmi_class, device.device_id)
-                if obj is not None:
-                    device.details.update(builder(obj))
-            device.details.update(_generic(pnp))
+        if device.category in SPECIFIC:
+            wmi_class, builder = SPECIFIC[device.category]
+            obj = _find(wmi_class, device.device_id)
+            if obj is not None:
+                device.details.update(builder(obj))
     except Exception as error:
         device.details["Erreur"] = f"Lecture des détails impossible : {error}"
 
-    if with_driver:
-        try:
-            _fill_driver(device)
-        except Exception as error:
-            device.details["Pilote"] = f"Indisponible ({error})"
+    # 2. Pilote
+    try:
+        _fill_driver(device)
+    except Exception as error:
+        device.details["Pilote"] = f"Indisponible ({error})"
 
+    # 2b. Description et identifiant matériel
+    if device.description and device.description != device.name:
+        device.details["Description"] = device.description
+    if device.device_id:
+        device.details["Identifiant materiel"] = device.device_id
+
+    # 3. On enlève les valeurs vides
     device.details = {
         label: value for label, value in device.details.items()
-        if value != NA and value != device.name
+        if value != NA
     }
     return device
