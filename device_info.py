@@ -34,6 +34,7 @@ def _date(wmi_date):
         return None
     return f"{text[6:8]}/{text[4:6]}/{text[:4]}"
 
+#_disk, _network, _video : chacun prend un objet WMI et retourne un dictionnaire de détails prêts à afficher
 def _disk(obj):
     serial = safe_get(obj, "SerialNumber")
     return {
@@ -66,18 +67,14 @@ def _video(obj):
         "Processeur video": _text(safe_get(obj, "VideoProcessor")),
     }
 
-# Catégorie (celle du scanner) -> (classe WMI à consulter, fonction qui la lit).
-# Les catégories absentes de ce tableau n'ont que les détails génériques.
-# Pour en ajouter une : écris une fonction _xxx(obj) et ajoute une ligne ici.
 SPECIFIC = {
     "Disque": ("Win32_DiskDrive", _disk),
     "Reseau": ("Win32_NetworkAdapter", _network),
     "Affichage": ("Win32_VideoController", _video),
 }
 
-# Retrouver l'objet WMI d'un périphérique
+# Retourne l'objet de cette classe WMI qui a cet identifiant, ou None
 def _find(wmi_class, device_id):
-    """Retourne l'objet de cette classe WMI qui a cet identifiant, ou None."""
     if wmi_class not in _objects:
         _objects[wmi_class] = {
             str(safe_get(obj, "PNPDeviceID", "")).upper(): obj
@@ -85,9 +82,8 @@ def _find(wmi_class, device_id):
         }
     return _objects[wmi_class].get(device_id.upper())
 
-# Pilote (fournisseur, version, date)
+#Retourne l'objet pilote du périphérique. Tous les pilotes sont lus une fois
 def _find_driver(device_id):
-    """Retourne l'objet pilote du périphérique. Tous les pilotes sont lus une fois."""
     global _drivers, _driver_error
     if _drivers is None:
         try:
@@ -101,8 +97,8 @@ def _find_driver(device_id):
             _driver_error = str(error)
     return _drivers.get(device_id.upper())
 
+#Remplit device.driver et ajoute les infos du pilote dans device.details
 def _fill_driver(device):
-    """Remplit device.driver et ajoute les infos du pilote dans device.details."""
     obj = _find_driver(device.device_id)
     if obj is None:
         if _driver_error:

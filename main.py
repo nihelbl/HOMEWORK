@@ -1,5 +1,4 @@
 """
-main.py - Teste device.py, device_scanner.py et device_info.py.
 Utilisation (sous Windows) :
     python main.py                          -> 1 ligne par périphérique
     python main.py --details                -> + pilote et caractéristiques
@@ -7,7 +6,6 @@ Utilisation (sous Windows) :
     python main.py --name realtek --details
     python main.py --all                    -> inclut les périphériques techniques
 """
-
 import argparse
 import sys
 import time
@@ -24,16 +22,14 @@ NOISE = ("WAN Miniport", "Kernel Debug", "Wi-Fi Direct", "MS Idd",
 def is_noise(device):
     return any(word.lower() in device.name.lower() for word in NOISE)
 
-
+#Retourne ' - Fabricant' seulement s'il apprend quelque chose
 def show_maker(device):
-    """Retourne ' - Fabricant' seulement s'il apprend quelque chose."""
     maker = device.manufacturer
     if maker == "Inconnu" or maker.lower().startswith("microsoft"):
         return ""
     if maker.split()[0].split("(")[0].lower() in device.name.lower():  # déjà dans le nom
         return ""
     return f" - {maker}"
-
 
 def print_device(device, with_details, count=1):
     line = f"  - {device.name}{show_maker(device)}"
